@@ -144,76 +144,45 @@ def main():
     }
 
     # Call the Engine
-    # try:
-    #     geometry_meshes, fea_nodes = GeometryEngine.generate_structure(params)
-    # except Exception as e:
-    #     st.exception(f"Error generating geometry: {e}")
-    #     st.stop()
-
-    geometry_meshes, fea_nodes = GeometryEngine.generate_structure(params)
-
+    try:
+        geometry_meshes = GeometryEngine.generate_structure(params)
+    except Exception as e:
+        st.error(f"Error generating geometry: {e}")
+        st.stop()
 
     # ==========================================
     # 3. VISUALIZATION - PLOTLY 3D
     # ==========================================
-    tab1, tab2 = st.tabs(["🏗️ Solid CAD Model", "🔴 FEA Nodal Model"])
+    
+    # Create the figure
+    fig = go.Figure(data=geometry_meshes)
 
-    # --- TAB 1: EXISTING CAD MODEL ---
-    with tab1:
-        fig_cad = go.Figure(data=geometry_meshes)
-        fig_cad.update_layout(
-            scene=dict(
-                aspectmode='data',
-                xaxis=dict(title="X (Width)", backgroundcolor="rgb(240, 240, 240)"),
-                yaxis=dict(title="Y (Depth)", backgroundcolor="rgb(240, 240, 240)"),
-                zaxis=dict(title="Z (Height)", backgroundcolor="rgb(230, 230, 250)"),
-                camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
-            ),
-            margin=dict(l=0, r=0, b=0, t=0),
-            height=700,
-        )
-        st.plotly_chart(fig_cad, use_container_width=True)
-
-        # ==========================================
-        # 4. SUMMARY METRICS
-        # ==========================================
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Panels", rows * cols)
-        c2.metric("System Area", f"{(rows * cols * p_len * p_wid):.2f} m²")
-        # A placeholder for future steps
-        c3.button("Calculate Wind Loads ➔", help="Feature coming in Step 3")
-
-    # --- TAB 2: NEW NODAL MODEL ---
-    with tab2:
-        if fea_nodes:
-            # Unpack the nodes into X, Y, Z lists for Plotly
-            x_vals = [p[0] for p in fea_nodes]
-            y_vals = [p[1] for p in fea_nodes]
-            z_vals = [p[2] for p in fea_nodes]
-
-            # Create a Scatter3d plot specifically for nodes
-            fig_nodes = go.Figure(data=[go.Scatter3d(
-                x=x_vals, y=y_vals, z=z_vals,
-                mode='markers',
-                marker=dict(size=5, color='red', symbol='circle', line=dict(width=1, color='black')),
-                name="Nodes"
-            )])
-
-            fig_nodes.update_layout(
-                scene=dict(
-                    aspectmode='data', # Keeps the 1:1:1 spatial ratio
-                    xaxis=dict(title="X (Width)"),
-                    yaxis=dict(title="Y (Depth)"),
-                    zaxis=dict(title="Z (Height)"),
-                    camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
-                ),
-                margin=dict(l=0, r=0, b=0, t=0),
-                height=700,
+    # Update Layout for Engineering View (Aspect Ratio is Key!)
+    fig.update_layout(
+        scene=dict(
+            aspectmode='data', # Ensures 1 meter looks like 1 meter on all axes
+            xaxis=dict(title="X (Width)", backgroundcolor="rgb(240, 240, 240)"),
+            yaxis=dict(title="Y (Depth)", backgroundcolor="rgb(240, 240, 240)"),
+            zaxis=dict(title="Z (Height)", backgroundcolor="rgb(230, 230, 250)"),
+            camera=dict(
+                eye=dict(x=1.5, y=1.5, z=1.2) # Initial camera position
             )
-            st.plotly_chart(fig_nodes, use_container_width=True)
-        else:
-            st.info("Add coordinate points to your 'fea_nodes' list in the backend to see them here!")
+        ),
+        margin=dict(l=0, r=0, b=0, t=0),
+        height=700, # Height of the canvas in pixels
+    )
 
+    # Render
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ==========================================
+    # 4. SUMMARY METRICS
+    # ==========================================
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Panels", rows * cols)
+    c2.metric("System Area", f"{(rows * cols * p_len * p_wid):.2f} m²")
+    # A placeholder for future steps
+    c3.button("Calculate Wind Loads ➔", help="Feature coming in Step 3")
 
 if __name__ == "__main__":
     main()

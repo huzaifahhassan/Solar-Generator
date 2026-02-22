@@ -2,7 +2,6 @@ import cadquery as cq
 import plotly.graph_objects as go
 import math
 import streamlit as st
-import numpy as np
 
 
 class GeometryEngine:
@@ -129,32 +128,6 @@ class GeometryEngine:
 
         # 6. Convert to Plotly
         return GeometryEngine._cq_to_plotly(part, color, name)
-    
-    @staticmethod
-    def create_nodes_plotly(nodes_list, color="red", size=6, name="FEA Nodes"):
-        """
-        Helper: Converts a list of [x, y, z] coordinates into a Plotly Scatter3d object.
-        Used for validating structural nodes.
-        """
-        if not nodes_list:
-            return None
-
-        # Unpack the list of lists/tuples into separate X, Y, Z lists
-        x_vals = [p[0] for p in nodes_list]
-        y_vals = [p[1] for p in nodes_list]
-        z_vals = [p[2] for p in nodes_list]
-
-        return go.Scatter3d(
-            x=x_vals, y=y_vals, z=z_vals,
-            mode='markers',
-            marker=dict(
-                size=size,
-                color=color,
-                symbol='circle',
-                line=dict(width=1, color='DarkSlateGrey') # Adds a nice border to the nodes
-            ),
-            name=name
-        )
 
     @staticmethod
     def generate_structure(params):
@@ -243,9 +216,6 @@ class GeometryEngine:
         for i in range(copies_in_x):
             for j in range(copies_in_y):
 
-                column_heights = []
-                column_y_pos = []
-
                 for y_i in range(y_cols_count):
                     for x_i in range(x_cols_count):
 
@@ -282,17 +252,12 @@ class GeometryEngine:
                             name="Block"
                         ))
 
-                    column_heights.append(calculated_height) # From Shortest to Tallest in the Y-Axis
-                    column_y_pos.append(cy) # From Shortest to Tallest in the Y-Axis
-
 
         # --- 4. -------------------------GENERATE RAFTERS (Using CadQuery) -------------------------------
 
         rafter_off = purlin_off - rafter_purlin_off
 
         print(rafter_off)
-
-        rafter_x_nodes = []
 
         for i in range(copies_in_x):
             for j in range(copies_in_y):
@@ -317,11 +282,46 @@ class GeometryEngine:
                         name="Rafter"
                     ))
 
-                    rafter_x_nodes.append(rx)
+        # --- 5. -------------------------- GENERATE PURLINS (Using CadQuery) ---------------------------------
+        purlin_spacing = (p_len - purlin_off*2)*math.cos(angle_rad)
+
+        for i in range(copies_in_x):
+            for j in range(copies_in_y):
+
+                for row in range(0, rows):
+
+                    pur_y_pos_1 = (row)*(p_len+v_gap)*math.cos(angle_rad) + purlin_off*math.cos(angle_rad)
+                    pur_y_pos_2 = pur_y_pos_1 + purlin_spacing
+                    pur_z_pos_1 = col_h_min + pur_y_pos_1*math.tan(angle_rad) + raf_len*1.5
+                    pur_z_pos_2 = col_h_min + pur_y_pos_2*math.tan(angle_rad) +  raf_len*1.5
+
+                    meshes.append(GeometryEngine.create_c_section_cq(
+                            center=(hor_panel_overhang + total_width / 2 + x_gap*(i), pur_y_pos_1 + y_gap*(j), pur_z_pos_1),
+                            length=pur_len, # Purlin depth (cross section)
+                            width=pur_wid, # Purlin spans the whole width
+                            thickness=pur_thk,
+                            height=total_width + 2*hor_purlin_overhang,
+                            rot_tup = [(0,1,0), (1,0,0)], # Rotation about Y
+                            color=C_PURLIN,
+                            tilt_angle= [90, angle+90],
+                            name="Purlin"
+                        ))
+                    
+                    
+                    meshes.append(GeometryEngine.create_c_section_cq(
+                            center=(hor_panel_overhang + total_width / 2 + x_gap*(i), pur_y_pos_2 + y_gap*(j), pur_z_pos_2),
+                            length=pur_len, 
+                            width=pur_wid, 
+                            thickness=pur_thk,
+                            height=total_width + 2*hor_purlin_overhang,
+                            rot_tup = [(0,1,0), (1,0,0)], # Rotation about Y
+                            color=C_PURLIN,
+                            tilt_angle= [90, angle+90],
+                            name="Purlin"
+                        ))
 
 
-    # --- 6. ---------------------------- GENERATE PANELS (Using CadQuery) -----------------------------
-        x_coords = []
+        # --- 6. ---------------------------- GENERATE PANELS (Using CadQuery) -----------------------------
 
         for i in range(copies_in_x):
             for j in range(copies_in_y):
@@ -329,10 +329,8 @@ class GeometryEngine:
                 for r in range(rows):
                     for c in range(cols):
                         local_y = r * vert_spacing + p_len / 2
-                        local_x = c * horiz_spacing + p_wid / 2 # horiz_spacing = p_wid + h_gap
-
-                        x_coords.append(local_x - p_wid/2 - h_gap/2)
-
+                        local_x = c * horiz_spacing + p_wid / 2
+                        
                         pan_y = local_y * math.cos(angle_rad)
                         stack_height = raf_len + pur_len + (p_thk / 2) + 0.02
                         pan_z = col_h_min + (local_y * math.sin(angle_rad)) + stack_height
@@ -347,178 +345,5 @@ class GeometryEngine:
                             rot_tup= [(1,0,0)],
                             name=f"Panel R{r+1}C{c+1}"
                         ))
-
-                    panel_x_coords = x_coords[:] # This is redundant right now will need to fix the looping
-
-
-
-        # --- 5. -------------------------- GENERATE PURLINS (Using CadQuery) ---------------------------------
-        purlin_spacing = (p_len - purlin_off*2)*math.cos(angle_rad)
-        raf_pur_inter_points = []
-        pur_points = []
-        column_coords = []
-        pur_pan_inter_points = []
-
-
-        for i in range(copies_in_x):
-            for j in range(copies_in_y):
-
-                for row in range(0, rows):
-
-                    up_per_points = []
-                    low_per_points = []
-
-
-                    pur_y_pos_1 = (row)*(p_len+v_gap)*math.cos(angle_rad) + purlin_off*math.cos(angle_rad)
-                    pur_y_pos_2 = pur_y_pos_1 + purlin_spacing
-                    pur_z_pos_1 = col_h_min + pur_y_pos_1*math.tan(angle_rad) + raf_len*1.5
-                    pur_z_pos_2 = col_h_min + pur_y_pos_2*math.tan(angle_rad) +  raf_len*1.5
-
-
-                    ### UPPER PERLIN
-                    cx = hor_panel_overhang + total_width / 2
-                    cy = pur_y_pos_1
-                    cz = pur_z_pos_1
-                    perlin_height = total_width + 2*hor_purlin_overhang
-
-                    meshes.append(GeometryEngine.create_c_section_cq(
-                            center=(cx, cy, cz),
-                            length=pur_len, # Purlin depth (cross section)
-                            width=pur_wid, # Purlin spans the whole width
-                            thickness=pur_thk,
-                            height= perlin_height,
-                            rot_tup = [(0,1,0), (1,0,0)], # Rotation about Y
-                            color=C_PURLIN,
-                            tilt_angle= [90, angle+90],
-                            name="Purlin"
-                        ))
-                    
-                    p_upper_center = [cx,cy,cz]
-                    p_upper_end_left = [cx - perlin_height/2, cy, cz]
-                    p_upper_end_right = [cx + perlin_height/2, cy, cz]
-                    up_per_points = [p_upper_end_left,p_upper_end_right]
-                    up_per_raf_points = [[x, cy, cz] for x in rafter_x_nodes]
-                    upper_per_pan_points = [[x, cy, cz] for x in panel_x_coords]
-
-
-
-                    ### LOWER PERLIN
-                    cy = pur_y_pos_2
-                    cz = pur_z_pos_2
-
-                    meshes.append(GeometryEngine.create_c_section_cq(
-                            center=(cx, cy, cz),
-                            length=pur_len, 
-                            width=pur_wid, 
-                            thickness=pur_thk,
-                            height=total_width + 2*hor_purlin_overhang,
-                            rot_tup = [(0,1,0), (1,0,0)], # Rotation about Y
-                            color=C_PURLIN,
-                            tilt_angle= [90, angle+90],
-                            name="Purlin"
-                        ))
-                    
-                    p_lower_center = [cx,cy,cz]
-                    p_lower_end_left = [cx - perlin_height/2, cy, cz]
-                    p_lower_end_right = [cx + perlin_height/2, cy, cz]
-                    low_per_points = [p_lower_end_left,p_lower_end_right]
-                    low_per_raf_points = [[x, cy, cz] for x in rafter_x_nodes]
-                    lower_per_pan_points = [[x, cy, cz] for x in panel_x_coords]
-
-
-                            
-                    # RAFTER - PURLIN INTERSECTION POINTS
-                    temp_list = [up_per_raf_points, low_per_raf_points]
-                    raf_pur_inter_points.append(temp_list) # These are the points of intersection of rafter and purlin for all rafter and purlins
-                    # PURLIN END POINTS
-                    temp_list = [up_per_points, low_per_points]
-                    pur_points.append(temp_list)
-                    # PANEL - PURLIN INTERSECTION POINTS
-                    temp_list = [upper_per_pan_points, lower_per_pan_points]
-                    pur_pan_inter_points.append(temp_list)
-
-
-                    
-
-                # Equation = z = my + c
-                m = (low_per_raf_points[0][2] - up_per_raf_points[0][2]) / (low_per_raf_points[0][1] - up_per_raf_points[0][1])
-                c = low_per_raf_points[0][2] - m*low_per_raf_points[0][1]
-                column_top_height = m*np.array(column_y_pos) + c
-
-                print(f"Gradient: {m}, Intercept: {c}")
-                print(f"Column Heights: {column_heights}")
-                print(f"Column Y-Positions: {column_y_pos}")
-                print(f"Upper Column Height: {column_top_height}")
-
-
-
-                # Now we need to attch the bottom z to its corresponding x and y
-                for x in rafter_x_nodes:
-                    for i in range(len(column_y_pos)):
-                        column_coords.append([[x,column_y_pos[i],0],[x,column_y_pos[i],column_top_height[i]]])
                 
-
-        
-
-        # Putting all Nodes in one list
-        all_fea_nodes = []
-        for i in range(len(raf_pur_inter_points)):
-            for j in range(len(raf_pur_inter_points[i])):
-                for k in range(len(raf_pur_inter_points[i][j])):
-                    all_fea_nodes.append(raf_pur_inter_points[i][j][k])
-
-        for i in range(len(pur_points)):
-            for j in range(len(pur_points[i])):
-                for k in range(len(pur_points[i][j])):
-                    all_fea_nodes.append(pur_points[i][j][k])
-
-        for i in range(len(pur_pan_inter_points)):
-            for j in range(len(pur_pan_inter_points[i])):
-                for k in range(len(pur_pan_inter_points[i][j])):
-                    all_fea_nodes.append(pur_pan_inter_points[i][j][k])
-        
-        for i in range(len(column_coords)):
-            for j in range(len(column_coords[i])):
-                all_fea_nodes.append(column_coords[i][j])
-
-        # Node Categories
-        # 1. Load Application Nodes ( pur_pan_inter_points )
-        # 2. Boundary Condition Nodes ( column_coords )
-
-        # Creating Nodes
-        node_trace = GeometryEngine.create_nodes_plotly(all_fea_nodes)
-        if node_trace:
-            meshes.append(node_trace)
-
-        # CREATING MEMBERS FROM NODES
-
-        # Creating MEMBERS ALONG PURLINS
-        # We will start with Upper Purlin. We will go left to right
-        # We will get Purlin Endpoints at the far ends ( simple to add to it )
-        # We will get Purlin Rafter Intersections 
-        # We will get Purlin Panel Intersections (We need to save these intersections in a list so we exactly know which nodes to apply load on)
-
-        # We first need to merge purlin endpoints , pur_raf_inter , pur_pan_inter in ascending order in X axis
-        # After sorting we need to make members
-        # We need to do this for each purlin
-
-
-        for i in range(len(pur_points)):
-            for j in range(len(pur_points[i])):
-                one_purlin_nodes = []
-                # Adding Left Purlin Endpoint
-                one_purlin_nodes.append(pur_points[i][j][0])
-                # Adding Purlin-Rafter Intersections
-                for k in range(len(raf_pur_inter_points[i][j])):
-                    one_purlin_nodes.append(raf_pur_inter_points[i][j][k])
-                # Adding Right Purlin Endpoint
-                one_purlin_nodes.append(pur_points[i][j][1])
-
-                # We also need to add in Purlin Panel Intersections in this in sorted order
-
-            
-
         return meshes
-
-                    
-        return meshes, all_fea_nodes
