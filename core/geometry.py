@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 import math
 import streamlit as st
 import numpy as np
+from Pynite import FEModel3D
 
 
 class GeometryEngine:
@@ -326,12 +327,10 @@ class GeometryEngine:
         for i in range(copies_in_x):
             for j in range(copies_in_y):
 
-                for r in range(rows):
-                    for c in range(cols):
+                for c in range(cols):
+                    for r in range(rows):
                         local_y = r * vert_spacing + p_len / 2
                         local_x = c * horiz_spacing + p_wid / 2 # horiz_spacing = p_wid + h_gap
-
-                        x_coords.append(local_x - p_wid/2 - h_gap/2)
 
                         pan_y = local_y * math.cos(angle_rad)
                         stack_height = raf_len + pur_len + (p_thk / 2) + 0.02
@@ -348,7 +347,10 @@ class GeometryEngine:
                             name=f"Panel R{r+1}C{c+1}"
                         ))
 
-                    panel_x_coords = x_coords[:] # This is redundant right now will need to fix the looping
+                    x_coord = local_x - p_wid/2 - h_gap/2 if c > 1 else local_x - p_wid/2
+                    x_coords.append(x_coord)
+
+                panel_x_coords = x_coords[:] # This is redundant right now will need to fix the looping
 
 
 
@@ -502,23 +504,138 @@ class GeometryEngine:
         # After sorting we need to make members
         # We need to do this for each purlin
 
+        ### PYNITE GENERAL PROPERTIES
+        model = FEModel3D()
 
+        ## NAMING SCHEME
+        # Purlin Nodes : P_N_{x:.3f}_{y:.3f}_{z:.3f}
+        # Rafter Nodes : R_N_{x:.3f}_{y:.3f}_{z:.3f}
+        # Column Nodes : C_N_{x:.3f}_{y:.3f}_{z:.3f}
+        # Block Nodes : B_N_{x:.3f}_{y:.3f}_{z:.3f}
+
+        ############################################### BUILDING PURLINS #######################################
+
+        # ADDING PURLIN MATERIAL
+        material = "purlin_mat"
+        E = 29_000  # ksi
+        nu = 0.3
+        G = E / (2 * (1 + nu)) # ksi
+        rho = 0.49 / (12**3)   # kci
+
+        model.add_material(name=material, E=E, G=G, nu=nu, rho=rho)
+
+        # ADDING PURLIN SECTION
+        model.add_section("purlin_sec", A=10.3, Iy=15.3, Iz=510, J=0.506)
+
+        # DEFINING PURLIN ANGLE ABOUT ITS AXIS
+        purlin_angle = angle + 90
+
+        # PURLIN NODE PROCESS 
         for i in range(len(pur_points)):
             for j in range(len(pur_points[i])):
                 one_purlin_nodes = []
                 # Adding Left Purlin Endpoint
                 one_purlin_nodes.append(pur_points[i][j][0])
-                # Adding Purlin-Rafter Intersections
-                for k in range(len(raf_pur_inter_points[i][j])):
-                    one_purlin_nodes.append(raf_pur_inter_points[i][j][k])
+                # Converting To Numpy and Sorting
+                r_p_points = np.array(raf_pur_inter_points[i][j])
+                print(f"RP POINTS: {r_p_points} ########")
+                p_p_points = np.array(pur_pan_inter_points[i][j])
+                print(f"PP POINTS: {p_p_points} ########")
+                concat_points = np.concatenate((r_p_points, p_p_points), axis=0)
+                # Sorting the points along x dimension
+                sorted_indexes = concat_points[:,0].argsort()
+                sorted_points = concat_points[sorted_indexes].tolist()
+                # Adding points to one_purlin_nodes list
+                for k in range(len(sorted_points)):
+                    one_purlin_nodes.append(sorted_points[k])
                 # Adding Right Purlin Endpoint
                 one_purlin_nodes.append(pur_points[i][j][1])
+                print(np.array(one_purlin_nodes))
 
-                # We also need to add in Purlin Panel Intersections in this in sorted order
+                # ADDING PURLIN NODES
+                node_names = []
+                for p in range(len(one_purlin_nodes)):
+                    x = one_purlin_nodes[p][0]
+                    y = one_purlin_nodes[p][1]
+                    z = one_purlin_nodes[p][2]
+                    node = f"N_{x:.3f}_{y:.3f}_{z:.3f}" 
+                    try: # This automatically filters duplicate nodes by name
+                        model.add_node(node, x, y, z)
+                        node_names.append(node)
+                    except:
+                        None
 
-            
+                # ADDING PURLIN MEMBERS
+                for q in range(len(node_names)-1):
+                    model.add_member(
+                        f"M_{node_names[q]}_{node_names[q+1]}",
+                        i_node=node_names[q],
+                        j_node=node_names[q+1],
+                        material_name="purlin_mat", 
+                        section_name="purlin_sec", 
+                        rotation= purlin_angle, 
+                        tension_only=False,
+                        comp_only=False
+                    )
 
-        return meshes
+        ######################################### BUILDING RAFTERS ###############################################
+                
+        # ADDING RAFTER MATERIAL
+        material = "rafter_mat"
+        E = 29_000  # ksi
+        nu = 0.3
+        G = E / (2 * (1 + nu)) # ksi
+        rho = 0.49 / (12**3)   # kci
+
+        model.add_material(name=material, E=E, G=G, nu=nu, rho=rho)
+
+        # ADDING RAFTER SECTION
+        model.add_section("rafter_sec", A=10.3, Iy=15.3, Iz=510, J=0.506)
+
+        # DEFINING RAFTER ANGLE ABOUT ITS AXIS
+        rafter_angle = 0
+
+        # RAFTER NODE PROCESS
+        for i in range(x_cols_count): 
+
+            one_rafter_nodes = []
+            one_rafter_names = []
+            for j in range(len(raf_pur_inter_points)):
+                for k in range(2):
+                    raf_point = raf_pur_inter_points[j][k][i]
+                    x = raf_point[0]
+                    y = raf_point[1]
+                    z = raf_point[2]
+                    node_name = f"N_{x:.3f}_{y:.3f}_{z:.3f}" 
+                    one_rafter_names.append(node_name)
+                    one_rafter_nodes.append(raf_point)
+
+            for c in range(y_cols_count):
+                column_node = column_coords[i][c]
+                x = column_node[0]
+                y = column_node[1]
+                z = column_node[2]
+                node_name = f"N_{x:.3f}_{y:.3f}_{z:.3f}"
+                one_rafter_names.append(node_name) 
+                model.add_node(node_name, x, y, z)
+                one_rafter_nodes.append(column_node)
+
+                # Now we have saved Column nodes and Rafter Nodes. We now have to Sort Node List and Node Names
+                # Then make members using sorted Node Names
+                # Where ever we have a column Node. We need to make the column member right there and then. 
+
+            # ADDING RAFTER MEMBERS (TO BE MODIFIED FOR UPDATED LOGIC ABOVE)
+            for q in range(len(node_names)-1):
+                model.add_member(
+                    f"M_{node_names[q]}_{node_names[q+1]}",
+                    i_node=node_names[q],
+                    j_node=node_names[q+1],
+                    material_name="rafter_mat", 
+                    section_name="rafter_sec", 
+                    rotation= rafter_angle, 
+                    tension_only=False,
+                    comp_only=False
+                )
 
                     
         return meshes, all_fea_nodes
