@@ -141,6 +141,7 @@ def main():
         'pur_len': pur_len, 'pur_wid': pur_wid, 'pur_thk': pur_thk,
         'copies_in_x': copies_in_x, 'copies_in_y': copies_in_y, 'x_gap': x_gap, 'y_gap': y_gap,
         'blk_len': blk_len, 'blk_wid': blk_wid, 'blk_heigth': blk_heigth,
+        'velocity_pressure': velocity_pressure
     }
 
     # Call the Engine

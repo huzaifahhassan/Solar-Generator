@@ -218,6 +218,10 @@ class GeometryEngine:
         copies_in_y = int(params['copies_in_y'])
         y_gap = params['y_gap']
 
+        # Wind Load
+        velocity_pressure = params['velocity_pressure']
+
+
         # --- 2. Calculate Derived Dimensions ---
         horiz_spacing = p_wid + h_gap
         vert_spacing = p_len + v_gap
@@ -456,8 +460,14 @@ class GeometryEngine:
 
                 # Now we need to attch the bottom z to its corresponding x and y
                 for x in rafter_x_nodes:
+                    column_coords_temp = []
                     for i in range(len(column_y_pos)):
-                        column_coords.append([[x,column_y_pos[i],0],[x,column_y_pos[i],column_top_height[i]]])
+                        # saving bottom and top coords of column
+                        column_coords_temp.append([[x,column_y_pos[i],0],[x,column_y_pos[i],column_top_height[i]]])
+
+                    column_coords.append(column_coords_temp)
+                    print(f"Column Coordinates: {column_coords}")
+
                 
 
         
@@ -481,7 +491,8 @@ class GeometryEngine:
         
         for i in range(len(column_coords)):
             for j in range(len(column_coords[i])):
-                all_fea_nodes.append(column_coords[i][j])
+                for k in range(len(column_coords[i][j])):
+                    all_fea_nodes.append(column_coords[i][j][k])
 
         # Node Categories
         # 1. Load Application Nodes ( pur_pan_inter_points )
@@ -558,7 +569,7 @@ class GeometryEngine:
                     x = one_purlin_nodes[p][0]
                     y = one_purlin_nodes[p][1]
                     z = one_purlin_nodes[p][2]
-                    node = f"N_{x:.3f}_{y:.3f}_{z:.3f}" 
+                    node = f"N_{x:.5f}_{y:.5f}_{z:.5f}" 
                     try: # This automatically filters duplicate nodes by name
                         model.add_node(node, x, y, z)
                         node_names.append(node)
@@ -606,30 +617,60 @@ class GeometryEngine:
                     x = raf_point[0]
                     y = raf_point[1]
                     z = raf_point[2]
-                    node_name = f"N_{x:.3f}_{y:.3f}_{z:.3f}" 
+                    node_name = f"N_{x:.5f}_{y:.5f}_{z:.5f}" 
                     one_rafter_names.append(node_name)
                     one_rafter_nodes.append(raf_point)
 
             for c in range(y_cols_count):
-                column_node = column_coords[i][c]
+                column_node = column_coords[i][c][1] # taking the column top coord only
+                print("Column Node:", column_node) 
                 x = column_node[0]
                 y = column_node[1]
                 z = column_node[2]
+                one_rafter_nodes.append(column_node)
                 node_name = f"N_{x:.3f}_{y:.3f}_{z:.3f}"
+                print(node_name)
                 one_rafter_names.append(node_name) 
                 model.add_node(node_name, x, y, z)
-                one_rafter_nodes.append(column_node)
 
-                # Now we have saved Column nodes and Rafter Nodes. We now have to Sort Node List and Node Names
-                # Then make members using sorted Node Names
-                # Where ever we have a column Node. We need to make the column member right there and then. 
+            sorted_indexes = np.array(one_rafter_nodes)[:,0].argsort()
+            sorted_one_rafter_nodes = np.array(one_rafter_nodes)[sorted_indexes].tolist()
+            
+            sorted_one_rafter_names = []
+            for i in sorted_indexes:
+                sorted_one_rafter_names.append(one_rafter_names[i])
 
-            # ADDING RAFTER MEMBERS (TO BE MODIFIED FOR UPDATED LOGIC ABOVE)
-            for q in range(len(node_names)-1):
+            print("Sorted One Rafter Nodes:", sorted_one_rafter_nodes)
+            print("Sorted One Rafter Names:", sorted_one_rafter_names)
+
+
+        # ADDING RAFTER MEMBERS (TO BE MODIFIED FOR UPDATED LOGIC ABOVE)
+        for q in range(len(sorted_one_rafter_names)-1):
+            model.add_member(
+                f"M_{sorted_one_rafter_names[q]}_{sorted_one_rafter_names[q+1]}",
+                i_node=sorted_one_rafter_names[q],
+                j_node=sorted_one_rafter_names[q+1],
+                material_name="rafter_mat", 
+                section_name="rafter_sec", 
+                rotation= rafter_angle, 
+                tension_only=False,
+                comp_only=False
+            )
+
+            identifier = sorted_one_rafter_names[q][:2]
+            if identifier == "NC":
+                # creating bottom node to add it
+                x = sorted_one_rafter_nodes[q][0]
+                y = sorted_one_rafter_nodes[q][1]
+                z = 0.0
+                bottom_node_name = f"NCB_{x:.5f}_{y:.5f}_{z:.5f}"
+                model.add_node(bottom_node_name, x, y, z)
+
+                # also connecting top column node to bottom column node
                 model.add_member(
-                    f"M_{node_names[q]}_{node_names[q+1]}",
-                    i_node=node_names[q],
-                    j_node=node_names[q+1],
+                    f"M_{sorted_one_rafter_names[q]}_{bottom_node_name}",
+                    i_node=sorted_one_rafter_names[q],
+                    j_node=bottom_node_name,
                     material_name="rafter_mat", 
                     section_name="rafter_sec", 
                     rotation= rafter_angle, 
@@ -637,5 +678,127 @@ class GeometryEngine:
                     comp_only=False
                 )
 
-                    
+        ### Adding Member Supports
+        all_model_node_names = list(model.nodes.keys())
+
+        for i in range(len(all_model_node_names)):
+            node_name = all_model_node_names[i]
+
+            if node_name[:3] == "NCB":
+                # these points are fixed to blocks and fully locked (all 6DOF)
+                model.def_support(
+                    node_name=node_name,
+                    support_DX=True,
+                    support_DY=True,
+                    support_DZ=True,
+                    support_RX=True,
+                    support_RY=True,
+                    support_RZ=True
+                )
+            else:
+                # All these points have no constraints
+                model.def_support(
+                    node_name=node_name,
+                    support_DX=False,
+                    support_DY=False,
+                    support_DZ=False,
+                    support_RX=False,
+                    support_RY=False,
+                    support_RZ=False
+                )
+
+        ## Namming the Solar Panel Nodes
+        upper_corner_panel_nodes = []
+        upper_central_panel_nodes = []
+        lower_corner_panel_nodes = []
+        lower_central_panel_nodes = []
+        upper_panel_node_names = []
+        lower_panel_node_names = []
+
+
+        for i in range(len(pur_pan_inter_points)):
+            for j in range(len(pur_pan_inter_points[i])):
+
+                    # checking if upper or lower half
+                    if i < len(pur_pan_inter_points)/2:
+                        # we are in upper half
+                        upper_corner_panel_nodes.append(pur_pan_inter_points[i][j][0])
+                        upper_panel_node_names.append(f"UPCor_{pur_pan_inter_points[i][j][0][0]:.5f}_{pur_pan_inter_points[i][j][0][1]:.5f}_{pur_pan_inter_points[i][j][0][2]:.5f}")
+                        for k in range(1 , len(pur_pan_inter_points[i][j])-1):
+                            upper_central_panel_nodes.append(pur_pan_inter_points[i][j][k])
+                            upper_panel_node_names.append(f"UPCen_{pur_pan_inter_points[i][j][k][0]:.5f}_{pur_pan_inter_points[i][j][k][1]:.5f}_{pur_pan_inter_points[i][j][k][2]:.5f}")
+                        upper_corner_panel_nodes.append(pur_pan_inter_points[i][j][-1])
+                        upper_panel_node_names.append(f"UPCor_{pur_pan_inter_points[i][j][-1][0]:.5f}_{pur_pan_inter_points[i][j][-1][1]:.5f}_{pur_pan_inter_points[i][j][-1][2]:.5f}")
+
+                    else:
+                        # we are in lower half  
+                        lower_corner_panel_nodes.append(pur_pan_inter_points[i][j][0])
+                        lower_panel_node_names.append(f"LPCor_{pur_pan_inter_points[i][j][0][0]:.5f}_{pur_pan_inter_points[i][j][0][1]:.5f}_{pur_pan_inter_points[i][j][0][2]:.5f}")
+
+                        for k in range(1 , len(pur_pan_inter_points[i][j])-1):
+                            lower_central_panel_nodes.append(pur_pan_inter_points[i][j][k])
+                            lower_panel_node_names.append(f"LPCen_{pur_pan_inter_points[i][j][k][0]:.5f}_{pur_pan_inter_points[i][j][k][1]:.5f}_{pur_pan_inter_points[i][j][k][2]:.5f}")
+
+                        lower_corner_panel_nodes.append(pur_pan_inter_points[i][j][-1])
+                        lower_panel_node_names.append(f"LPCor_{pur_pan_inter_points[i][j][-1][0]:.5f}_{pur_pan_inter_points[i][j][-1][1]:.5f}_{pur_pan_inter_points[i][j][-1][2]:.5f}")
+
+        upper_panel_nodes = upper_corner_panel_nodes + upper_central_panel_nodes
+        lower_panel_nodes = lower_corner_panel_nodes + lower_central_panel_nodes
+        panel_nodes = upper_panel_nodes + lower_panel_nodes
+        panel_node_names = upper_panel_node_names + lower_panel_node_names
+
+        panel_coord_names = []
+        for i in range(len(panel_node_names)):
+            coord_part = panel_node_names[i].split("_")[1:]
+            coord_string = coord_part[0] + "_" + coord_part[1] + "_" + coord_part[2]
+            panel_coord_names.append(coord_string)
+        print(panel_coord_names)
+
+        ## Calculating Upper and Lower Wind Load
+        total_panel_area = rows*cols*p_len*p_wid
+        one_panel_area = p_len*p_wid
+        one_panel_force = one_panel_area*velocity_pressure
+        one_panel_one_point_force = one_panel_force/4 # 4 points of contact with perlin
+        panel_angle = purlin_angle # verify this
+
+        corner_node_load = one_panel_one_point_force
+        center_node_load = one_panel_one_point_force*2
+
+
+
+
+
+        
+        ## Applying Loads on Nodes
+        upper_corner_load = None
+        upper_central_load = None
+        lower_corner_load = None
+        lower_central_load = None
+
+        for i in range(len(all_model_node_names)):
+
+            node_name = all_model_node_names[i]
+
+            coordinates_part = node_name.split("_")[1:]
+            coordinates_string = coordinates_part[0] + "_" + coordinates_part[1] + "_" + coordinates_part[2]
+            print("Coordinates String: ", coordinates_string)
+
+            if coordinates_string in panel_coord_names:
+                index = panel_coord_names.index(coordinates_string)
+                p_identifier = panel_node_names[index][:5]
+                print("Identifier: " , p_identifier)
+
+                if p_identifier == "UPCor":
+                    upper_corner_load = 10
+                elif p_identifier == "UPCen":
+                    upper_central_load = 10
+                elif p_identifier == "LPCor":
+                    lower_corner_load = 10
+                elif p_identifier == "LPCen":
+                    lower_central_load = 10
+
+
+
+
+        
         return meshes, all_fea_nodes
