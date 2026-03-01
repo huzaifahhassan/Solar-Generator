@@ -151,14 +151,17 @@ def main():
     #     st.exception(f"Error generating geometry: {e}")
     #     st.stop()
 
-    geometry_meshes, fea_nodes = GeometryEngine.generate_structure(params)
+    geometry_meshes, fea_nodes, fea_members = GeometryEngine.generate_structure(params)
+
+    print("Geometry Meshes: ", geometry_meshes)
+    print("FEA Nodes: ", fea_nodes)
+    print("FEA Members: ", fea_members)
 
 
     # ==========================================
     # 3. VISUALIZATION - PLOTLY 3D
     # ==========================================
-    tab1, tab2 = st.tabs(["🏗️ Solid CAD Model", "🔴 FEA Nodal Model"])
-
+    tab1, tab2, tab3 = st.tabs(["🏗️ Solid CAD Model", "🔴 FEA Nodal Model", "📐 Member Wireframe"])
     # --- TAB 1: EXISTING CAD MODEL ---
     with tab1:
         fig_cad = go.Figure(data=geometry_meshes)
@@ -214,6 +217,47 @@ def main():
             st.plotly_chart(fig_nodes, use_container_width=True)
         else:
             st.info("Add coordinate points to your 'fea_nodes' list in the backend to see them here!")
+
+# --- TAB 3: MEMBER WIREFRAME ---
+    with tab3:
+        
+        x_coords = fea_members[0] if len(fea_members) > 0 else []
+        y_coords = fea_members[1] if len(fea_members) > 1 else []
+        z_coords = fea_members[2] if len(fea_members) > 2 else []
+
+        fig_members = go.Figure() # defining the figure outside the loop to add multiple traces for each member
+            
+        # Loop through members and insert 'None' to break the continuous line
+        for i in range(len(x_coords)):
+            x_cords = x_coords[i]
+            y_cords = y_coords[i]
+            z_cords = z_coords[i]
+            
+            # Create the line plot
+            fig_members.add_trace(go.Scatter3d(
+                x=x_cords, 
+                y=y_cords, 
+                z=z_cords,
+                mode='lines',
+                line=dict(color='blue', width=3),
+                name="Structural Members"
+            ))
+
+            print(f"Member {i+1}: X={x_cords}, Y={y_cords}, Z={z_cords}")
+
+        fig_members.update_layout(
+            scene=dict(
+                aspectmode='data',
+                xaxis=dict(title="X (Width)"),
+                yaxis=dict(title="Y (Depth)"),
+                zaxis=dict(title="Z (Height)"),
+                camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
+            ),
+            margin=dict(l=0, r=0, b=0, t=0),
+            height=700,
+        )
+        st.plotly_chart(fig_members, use_container_width=True)
+
 
 
 if __name__ == "__main__":

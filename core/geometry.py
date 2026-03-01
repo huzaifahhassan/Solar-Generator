@@ -4,6 +4,7 @@ import math
 import streamlit as st
 import numpy as np
 from Pynite import FEModel3D
+import pandas as pd
 
 
 class GeometryEngine:
@@ -524,6 +525,10 @@ class GeometryEngine:
         # Column Nodes : C_N_{x:.3f}_{y:.3f}_{z:.3f}
         # Block Nodes : B_N_{x:.3f}_{y:.3f}_{z:.3f}
 
+        x_coord_pair = []
+        y_coord_pair = []
+        z_coord_pair = []
+
         ############################################### BUILDING PURLINS #######################################
 
         # ADDING PURLIN MATERIAL
@@ -589,6 +594,12 @@ class GeometryEngine:
                         comp_only=False
                     )
 
+                    x_coord_pair.append([one_purlin_nodes[q][0], one_purlin_nodes[q+1][0]])
+                    y_coord_pair.append([one_purlin_nodes[q][1], one_purlin_nodes[q+1][1]])
+                    z_coord_pair.append([one_purlin_nodes[q][2], one_purlin_nodes[q+1][2]])
+
+                
+
         ######################################### BUILDING RAFTERS ###############################################
                 
         # ADDING RAFTER MATERIAL
@@ -628,7 +639,7 @@ class GeometryEngine:
                 y = column_node[1]
                 z = column_node[2]
                 one_rafter_nodes.append(column_node)
-                node_name = f"N_{x:.3f}_{y:.3f}_{z:.3f}"
+                node_name = f"NC_{x:.3f}_{y:.3f}_{z:.3f}"
                 print(node_name)
                 one_rafter_names.append(node_name) 
                 model.add_node(node_name, x, y, z)
@@ -657,6 +668,10 @@ class GeometryEngine:
                 comp_only=False
             )
 
+            x_coord_pair.append([sorted_one_rafter_nodes[q][0], sorted_one_rafter_nodes[q+1][0]])
+            y_coord_pair.append([sorted_one_rafter_nodes[q][1], sorted_one_rafter_nodes[q+1][1]])
+            z_coord_pair.append([sorted_one_rafter_nodes[q][2], sorted_one_rafter_nodes[q+1][2]])
+
             identifier = sorted_one_rafter_names[q][:2]
             if identifier == "NC":
                 # creating bottom node to add it
@@ -677,6 +692,10 @@ class GeometryEngine:
                     tension_only=False,
                     comp_only=False
                 )
+
+                x_coord_pair.append([sorted_one_rafter_nodes[q][0], sorted_one_rafter_nodes[q][0]])
+                y_coord_pair.append([sorted_one_rafter_nodes[q][1], sorted_one_rafter_nodes[q][1]])
+                z_coord_pair.append([sorted_one_rafter_nodes[q][2], 0])
 
         ### Adding Member Supports
         all_model_node_names = list(model.nodes.keys())
@@ -764,11 +783,32 @@ class GeometryEngine:
         corner_node_load = one_panel_one_point_force
         center_node_load = one_panel_one_point_force*2
 
+        # in reality we need to interpolate if angle > 7.5 Degrees
+        if angle >= 0 and angle < 7.5:
+            roof_angle = 0
+        elif angle >= 7.5 and angle < 15:
+            roof_angle = 7.5
+        elif angle >= 15 and angle < 22.5:
+            roof_angle = 15
+        elif angle >= 22.5 and angle < 30:
+            roof_angle = 22.5
+        elif angle >= 30 and angle < 37.5:
+            roof_angle = 30
+        else:
+            roof_angle = 45
 
+        # read csv file with roof angle and corresponding pressure coefficients with pandas
+        df = pd.read_csv("wind.csv")
+        # pick rows
+        target_cols = ['CNW_C_0','CNL_C_0','CNW_O_0','CNL_O_0','CNW_C_180','CNL_C_180','CNW_O_180','CNL_O_180']
+        matches = df.loc[df["roof angle"] == roof_angle, target_cols ]
+        case_a = matches.iloc[0]
+        case_b = matches.iloc[1]
 
+        # for now lets just take 0 degree , clear wind case
+        cnw = case_a[0]
+        cnl = case_a[1]
 
-
-        
         ## Applying Loads on Nodes
         upper_corner_load = None
         upper_central_load = None
@@ -789,16 +829,65 @@ class GeometryEngine:
                 print("Identifier: " , p_identifier)
 
                 if p_identifier == "UPCor":
-                    upper_corner_load = 10
+                    upper_corner_load = one_panel_one_point_force*cnw
+                    model.add_node_load(
+                        node_name,
+                        direction="FY", 
+                        P=upper_corner_load*math.cos(math.radians(panel_angle)),
+                    )
+
+                    model.add_node_load(
+                        node_name,
+                        direction="FZ", 
+                        P=upper_corner_load*math.sin(math.radians(panel_angle)),
+                    )
                 elif p_identifier == "UPCen":
-                    upper_central_load = 10
+                    upper_central_load = one_panel_one_point_force*cnw*2
+                    model.add_node_load(
+                        node_name,
+                        direction="FY",
+                        P=upper_central_load*math.cos(math.radians(panel_angle)),
+                    )
+                    model.add_node_load(
+                        node_name,
+                        direction="FZ",
+                        P=upper_central_load*math.sin(math.radians(panel_angle)),
+                    )
                 elif p_identifier == "LPCor":
-                    lower_corner_load = 10
+                    lower_corner_load = one_panel_one_point_force*cnl
+                    model.add_node_load(
+                        node_name,
+                        direction="FY",
+                        P=lower_corner_load*math.cos(math.radians(panel_angle)),
+                    )
+                    model.add_node_load(
+                        node_name,
+                        direction="FZ",
+                        P=lower_corner_load*math.sin(math.radians(panel_angle)),
+                    )
                 elif p_identifier == "LPCen":
-                    lower_central_load = 10
+                    lower_central_load = one_panel_one_point_force*cnl*2
+                    model.add_node_load(
+                        node_name,
+                        direction="FY",
+                        P=lower_central_load*math.cos(math.radians(panel_angle)),
+                    )
+                    model.add_node_load(
+                        node_name,
+                        direction="FZ",
+                        P=lower_central_load*math.sin(math.radians(panel_angle)),
+                    )
+
+        #model.analyze_linear(log=True, check_stability=True, check_statics=True)
+
+        # Plotting all the members in 3D using Plotly
+        print("X Coord Pairs: ", x_coord_pair)
+        print("Y Coord Pairs: ", y_coord_pair)
+        print("Z Coord Pairs: ", z_coord_pair)
+
+        fea_members = [x_coord_pair, y_coord_pair, z_coord_pair]
 
 
 
 
-        
-        return meshes, all_fea_nodes
+        return meshes, all_fea_nodes, fea_members
