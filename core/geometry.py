@@ -452,10 +452,10 @@ class GeometryEngine:
                 c = low_per_raf_points[0][2] - m*low_per_raf_points[0][1]
                 column_top_height = m*np.array(column_y_pos) + c
 
-                print(f"Gradient: {m}, Intercept: {c}")
-                print(f"Column Heights: {column_heights}")
-                print(f"Column Y-Positions: {column_y_pos}")
-                print(f"Upper Column Height: {column_top_height}")
+                # print(f"Gradient: {m}, Intercept: {c}")
+                # print(f"Column Heights: {column_heights}")
+                # print(f"Column Y-Positions: {column_y_pos}")
+                # print(f"Upper Column Height: {column_top_height}")
 
 
 
@@ -467,7 +467,6 @@ class GeometryEngine:
                         column_coords_temp.append([[x,column_y_pos[i],0],[x,column_y_pos[i],column_top_height[i]]])
 
                     column_coords.append(column_coords_temp)
-                    print(f"Column Coordinates: {column_coords}")
 
                 
 
@@ -547,16 +546,14 @@ class GeometryEngine:
         purlin_angle = angle + 90
 
         # PURLIN NODE PROCESS 
-        for i in range(len(pur_points)):
-            for j in range(len(pur_points[i])):
+        for i in range(len(pur_points)): # number of purlin pairs
+            for j in range(len(pur_points[i])): # upper and lower purlin
                 one_purlin_nodes = []
                 # Adding Left Purlin Endpoint
                 one_purlin_nodes.append(pur_points[i][j][0])
                 # Converting To Numpy and Sorting
                 r_p_points = np.array(raf_pur_inter_points[i][j])
-                print(f"RP POINTS: {r_p_points} ########")
                 p_p_points = np.array(pur_pan_inter_points[i][j])
-                print(f"PP POINTS: {p_p_points} ########")
                 concat_points = np.concatenate((r_p_points, p_p_points), axis=0)
                 # Sorting the points along x dimension
                 sorted_indexes = concat_points[:,0].argsort()
@@ -566,10 +563,10 @@ class GeometryEngine:
                     one_purlin_nodes.append(sorted_points[k])
                 # Adding Right Purlin Endpoint
                 one_purlin_nodes.append(pur_points[i][j][1])
-                print(np.array(one_purlin_nodes))
 
                 # ADDING PURLIN NODES
                 node_names = []
+                left_out = []
                 for p in range(len(one_purlin_nodes)):
                     x = one_purlin_nodes[p][0]
                     y = one_purlin_nodes[p][1]
@@ -579,7 +576,15 @@ class GeometryEngine:
                         model.add_node(node, x, y, z)
                         node_names.append(node)
                     except:
-                        None
+                        left_out.append(p) # This is the index of the node that is duplicate and should be left out while creating members
+
+                print("One Purlin Nodes:", one_purlin_nodes)
+                print("Node Names:", node_names)
+                print("Left Out Indices:", left_out)
+
+                filtered_nodes = [val for i, val in enumerate(one_purlin_nodes) if i not in left_out]
+                one_purlin_nodes = filtered_nodes
+
 
                 # ADDING PURLIN MEMBERS
                 for q in range(len(node_names)-1):
@@ -597,8 +602,7 @@ class GeometryEngine:
                     x_coord_pair.append([one_purlin_nodes[q][0], one_purlin_nodes[q+1][0]])
                     y_coord_pair.append([one_purlin_nodes[q][1], one_purlin_nodes[q+1][1]])
                     z_coord_pair.append([one_purlin_nodes[q][2], one_purlin_nodes[q+1][2]])
-
-                
+                    
 
         ######################################### BUILDING RAFTERS ###############################################
                 
@@ -640,52 +644,27 @@ class GeometryEngine:
                 z = column_node[2]
                 one_rafter_nodes.append(column_node)
                 node_name = f"NC_{x:.3f}_{y:.3f}_{z:.3f}"
-                print(node_name)
                 one_rafter_names.append(node_name) 
                 model.add_node(node_name, x, y, z)
 
-            sorted_indexes = np.array(one_rafter_nodes)[:,0].argsort()
+            sorted_indexes = np.array(one_rafter_nodes)[:,1].argsort()
             sorted_one_rafter_nodes = np.array(one_rafter_nodes)[sorted_indexes].tolist()
             
             sorted_one_rafter_names = []
             for i in sorted_indexes:
                 sorted_one_rafter_names.append(one_rafter_names[i])
 
-            print("Sorted One Rafter Nodes:", sorted_one_rafter_nodes)
+
             print("Sorted One Rafter Names:", sorted_one_rafter_names)
 
 
-        # ADDING RAFTER MEMBERS (TO BE MODIFIED FOR UPDATED LOGIC ABOVE)
-        for q in range(len(sorted_one_rafter_names)-1):
-            model.add_member(
-                f"M_{sorted_one_rafter_names[q]}_{sorted_one_rafter_names[q+1]}",
-                i_node=sorted_one_rafter_names[q],
-                j_node=sorted_one_rafter_names[q+1],
-                material_name="rafter_mat", 
-                section_name="rafter_sec", 
-                rotation= rafter_angle, 
-                tension_only=False,
-                comp_only=False
-            )
 
-            x_coord_pair.append([sorted_one_rafter_nodes[q][0], sorted_one_rafter_nodes[q+1][0]])
-            y_coord_pair.append([sorted_one_rafter_nodes[q][1], sorted_one_rafter_nodes[q+1][1]])
-            z_coord_pair.append([sorted_one_rafter_nodes[q][2], sorted_one_rafter_nodes[q+1][2]])
-
-            identifier = sorted_one_rafter_names[q][:2]
-            if identifier == "NC":
-                # creating bottom node to add it
-                x = sorted_one_rafter_nodes[q][0]
-                y = sorted_one_rafter_nodes[q][1]
-                z = 0.0
-                bottom_node_name = f"NCB_{x:.5f}_{y:.5f}_{z:.5f}"
-                model.add_node(bottom_node_name, x, y, z)
-
-                # also connecting top column node to bottom column node
+            # ADDING RAFTER MEMBERS (TO BE MODIFIED FOR UPDATED LOGIC ABOVE)
+            for q in range(len(sorted_one_rafter_names)-1):
                 model.add_member(
-                    f"M_{sorted_one_rafter_names[q]}_{bottom_node_name}",
+                    f"M_{sorted_one_rafter_names[q]}_{sorted_one_rafter_names[q+1]}",
                     i_node=sorted_one_rafter_names[q],
-                    j_node=bottom_node_name,
+                    j_node=sorted_one_rafter_names[q+1],
                     material_name="rafter_mat", 
                     section_name="rafter_sec", 
                     rotation= rafter_angle, 
@@ -693,9 +672,60 @@ class GeometryEngine:
                     comp_only=False
                 )
 
-                x_coord_pair.append([sorted_one_rafter_nodes[q][0], sorted_one_rafter_nodes[q][0]])
-                y_coord_pair.append([sorted_one_rafter_nodes[q][1], sorted_one_rafter_nodes[q][1]])
-                z_coord_pair.append([sorted_one_rafter_nodes[q][2], 0])
+                x_coord_pair.append([sorted_one_rafter_nodes[q][0], sorted_one_rafter_nodes[q+1][0]])
+                y_coord_pair.append([sorted_one_rafter_nodes[q][1], sorted_one_rafter_nodes[q+1][1]])
+                z_coord_pair.append([sorted_one_rafter_nodes[q][2], sorted_one_rafter_nodes[q+1][2]])
+
+                identifier = sorted_one_rafter_names[q][:2]
+                if identifier == "NC":
+                    print("Bottom Node to be added for:", sorted_one_rafter_names[q])
+                    # creating bottom node to add it
+                    x = sorted_one_rafter_nodes[q][0]
+                    y = sorted_one_rafter_nodes[q][1]
+                    z = 0.0
+                    bottom_node_name = f"NCB_{x:.5f}_{y:.5f}_{z:.5f}"
+                    model.add_node(bottom_node_name, x, y, z)
+
+                    # also connecting top column node to bottom column node
+                    model.add_member(
+                        f"M_{sorted_one_rafter_names[q]}_{bottom_node_name}",
+                        i_node=sorted_one_rafter_names[q],
+                        j_node=bottom_node_name,
+                        material_name="rafter_mat", 
+                        section_name="rafter_sec", 
+                        rotation= rafter_angle, 
+                        tension_only=False,
+                        comp_only=False
+                    )
+
+                    x_coord_pair.append([sorted_one_rafter_nodes[q][0], sorted_one_rafter_nodes[q][0]])
+                    y_coord_pair.append([sorted_one_rafter_nodes[q][1], sorted_one_rafter_nodes[q][1]])
+                    z_coord_pair.append([sorted_one_rafter_nodes[q][2], 0])
+
+                if sorted_one_rafter_names[q+1][:2] == "NC" and q == 4: # This means we are at the last node which is also a column top node
+                    print("Bottom Node to be added for:", sorted_one_rafter_names[q+1])
+                    # creating bottom node to add it
+                    x = sorted_one_rafter_nodes[q+1][0]
+                    y = sorted_one_rafter_nodes[q+1][1]
+                    z = 0.0
+                    bottom_node_name = f"NCB_{x:.5f}_{y:.5f}_{z:.5f}"
+                    model.add_node(bottom_node_name, x, y, z)
+
+                    # also connecting top column node to bottom column node
+                    model.add_member(
+                        f"M_{sorted_one_rafter_names[q+1]}_{bottom_node_name}",
+                        i_node=sorted_one_rafter_names[q+1],
+                        j_node=bottom_node_name,
+                        material_name="rafter_mat", 
+                        section_name="rafter_sec", 
+                        rotation= rafter_angle, 
+                        tension_only=False,
+                        comp_only=False
+                    )
+
+                    x_coord_pair.append([sorted_one_rafter_nodes[q+1][0], sorted_one_rafter_nodes[q+1][0]])
+                    y_coord_pair.append([sorted_one_rafter_nodes[q+1][1], sorted_one_rafter_nodes[q+1][1]])
+                    z_coord_pair.append([sorted_one_rafter_nodes[q+1][2], 0])
 
         ### Adding Member Supports
         all_model_node_names = list(model.nodes.keys())
@@ -821,12 +851,10 @@ class GeometryEngine:
 
             coordinates_part = node_name.split("_")[1:]
             coordinates_string = coordinates_part[0] + "_" + coordinates_part[1] + "_" + coordinates_part[2]
-            print("Coordinates String: ", coordinates_string)
 
             if coordinates_string in panel_coord_names:
                 index = panel_coord_names.index(coordinates_string)
                 p_identifier = panel_node_names[index][:5]
-                print("Identifier: " , p_identifier)
 
                 if p_identifier == "UPCor":
                     upper_corner_load = one_panel_one_point_force*cnw
@@ -881,10 +909,6 @@ class GeometryEngine:
         #model.analyze_linear(log=True, check_stability=True, check_statics=True)
 
         # Plotting all the members in 3D using Plotly
-        print("X Coord Pairs: ", x_coord_pair)
-        print("Y Coord Pairs: ", y_coord_pair)
-        print("Z Coord Pairs: ", z_coord_pair)
-
         fea_members = [x_coord_pair, y_coord_pair, z_coord_pair]
 
 

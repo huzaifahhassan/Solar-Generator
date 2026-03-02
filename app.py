@@ -153,9 +153,9 @@ def main():
 
     geometry_meshes, fea_nodes, fea_members = GeometryEngine.generate_structure(params)
 
-    print("Geometry Meshes: ", geometry_meshes)
-    print("FEA Nodes: ", fea_nodes)
-    print("FEA Members: ", fea_members)
+    # print("Geometry Meshes: ", geometry_meshes)
+    # print("FEA Nodes: ", fea_nodes)
+    # print("FEA Members: ", fea_members)
 
 
     # ==========================================
