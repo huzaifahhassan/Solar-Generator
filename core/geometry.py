@@ -355,6 +355,8 @@ class GeometryEngine:
                     x_coord = local_x - p_wid/2 - h_gap/2 if c > 1 else local_x - p_wid/2
                     x_coords.append(x_coord)
 
+                x_coords.append(x_coords[-1] + p_wid + h_gap/2) # Adding the last coordinate which is the right edge of the last panel ( this is for intersection with purlin )
+
                 panel_x_coords = x_coords[:] # This is redundant right now will need to fix the looping
 
 
@@ -602,7 +604,7 @@ class GeometryEngine:
                     x_coord_pair.append([one_purlin_nodes[q][0], one_purlin_nodes[q+1][0]])
                     y_coord_pair.append([one_purlin_nodes[q][1], one_purlin_nodes[q+1][1]])
                     z_coord_pair.append([one_purlin_nodes[q][2], one_purlin_nodes[q+1][2]])
-                    
+
 
         ######################################### BUILDING RAFTERS ###############################################
                 
@@ -906,12 +908,10 @@ class GeometryEngine:
                         P=lower_central_load*math.sin(math.radians(panel_angle)),
                     )
 
+        ### Solving the model
         #model.analyze_linear(log=True, check_stability=True, check_statics=True)
 
         # Plotting all the members in 3D using Plotly
         fea_members = [x_coord_pair, y_coord_pair, z_coord_pair]
-
-
-
 
         return meshes, all_fea_nodes, fea_members
