@@ -1,6 +1,9 @@
 import streamlit as st
 import plotly.graph_objects as go
 from core.geometry import GeometryEngine
+import streamlit as st
+import streamlit.components.v1 as components
+
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Solar Structural Designer",
@@ -45,12 +48,12 @@ def main():
             h_gap = st.number_input("Panel H-Gap", 0.0, 0.1, 0.02)
             v_gap = st.number_input("Panel V-Gap", 0.0, 0.1, 0.02)
             st.markdown("---")
-            front_off = st.number_input("Front Column Offset", 0.0, 2.0, 0.3)
-            rear_off = st.number_input("Rear Column Offset", 0.0, 2.0, 0.3)
+            front_off = st.number_input("Front Column Offset", 0.0, 2.0, 0.6)
+            rear_off = st.number_input("Rear Column Offset", 0.0, 2.0, 0.8)
             purlin_off = st.number_input("Purlin Offset", 0.0, 1.0, 0.3)
-            rafter_purlin_off = st.number_input("Rafter-Purlin Offset", 0.0, 2.0, 0.2)
-            hor_panel_off = st.number_input("Horizontal Panel Overhang", 0.0, 2.0, 0.2)
-            hor_purlin_off = st.number_input("Horizontal Purlin Overhang", 0.0, 2.0, 0.2)
+            rafter_purlin_off = st.number_input("Rafter-Purlin Offset", 0.0, 2.0, 0.4)
+            hor_panel_off = st.number_input("Horizontal Panel Overhang", 0.0, 2.0, 0.6)
+            #hor_purlin_off = st.number_input("Horizontal Purlin Overhang", 0.0, 2.0, 0.2)
 
         # --- Section: Structure Details ---
         with st.expander("Solar Farm Details"):
@@ -135,7 +138,7 @@ def main():
         'x_cols': x_cols, 'y_cols': y_cols,
         'col_min_height': col_min_h, 
         'h_gap': h_gap, 'v_gap': v_gap,
-        'front_offset': front_off, 'rear_offset': rear_off, 'purlin_offset': purlin_off, 'rafter_purlin_offset': rafter_purlin_off, 'hor_panel_overhang': hor_panel_off, 'hor_purlin_overhang': hor_purlin_off,
+        'front_offset': front_off, 'rear_offset': rear_off, 'purlin_offset': purlin_off, 'rafter_purlin_offset': rafter_purlin_off, 'hor_panel_overhang': hor_panel_off, #'hor_purlin_overhang': hor_purlin_off,
         'col_len': col_len, 'col_wid': col_wid, 'col_thk': col_thk,
         'raf_len': raf_len, 'raf_wid': raf_wid, 'raf_thk': raf_thk,
         'pur_len': pur_len, 'pur_wid': pur_wid, 'pur_thk': pur_thk,
@@ -151,7 +154,7 @@ def main():
     #     st.exception(f"Error generating geometry: {e}")
     #     st.stop()
 
-    geometry_meshes, fea_nodes, fea_members = GeometryEngine.generate_structure(params)
+    geometry_meshes, fea_nodes, fea_members, model = GeometryEngine.generate_structure(params)
 
     # print("Geometry Meshes: ", geometry_meshes)
     # print("FEA Nodes: ", fea_nodes)
@@ -161,7 +164,7 @@ def main():
     # ==========================================
     # 3. VISUALIZATION - PLOTLY 3D
     # ==========================================
-    tab1, tab2, tab3 = st.tabs(["🏗️ Solid CAD Model", "🔴 FEA Nodal Model", "📐 Member Wireframe"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🏗️ Solid CAD Model", "🔴 FEA Nodal Model", "📐 Member Wireframe", "💻 PyNite FEA Results"])
     # --- TAB 1: EXISTING CAD MODEL ---
     with tab1:
         fig_cad = go.Figure(data=geometry_meshes)
@@ -220,43 +223,74 @@ def main():
 
 # --- TAB 3: MEMBER WIREFRAME ---
     with tab3:
+
+        if fea_members:
+            x_coords = fea_members[0] if len(fea_members) > 0 else []
+            y_coords = fea_members[1] if len(fea_members) > 1 else []
+            z_coords = fea_members[2] if len(fea_members) > 2 else []
+
+            fig_members = go.Figure() # defining the figure outside the loop to add multiple traces for each member
+                
+            # Loop through members and insert 'None' to break the continuous line
+            for i in range(len(x_coords)):
+                x_cords = x_coords[i]
+                y_cords = y_coords[i]
+                z_cords = z_coords[i]
+                
+                # Create the line plot
+                fig_members.add_trace(go.Scatter3d(
+                    x=x_cords, 
+                    y=y_cords, 
+                    z=z_cords,
+                    mode='lines',
+                    line=dict(color='blue', width=3),
+                    name="Structural Members"
+                ))
+
+                print(f"Member {i+1}: X={x_cords}, Y={y_cords}, Z={z_cords}")
+
+            fig_members.update_layout(
+                scene=dict(
+                    aspectmode='data',
+                    xaxis=dict(title="X (Width)"),
+                    yaxis=dict(title="Y (Depth)"),
+                    zaxis=dict(title="Z (Height)"),
+                    camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
+                ),
+                margin=dict(l=0, r=0, b=0, t=0),
+                height=700,
+            )
+            st.plotly_chart(fig_members, use_container_width=True)
+
+
+    from Pynite.Rendering import Renderer
+
+    # ... inside your Streamlit app ...
+    with tab4: # Assuming this is your new tab
         
-        x_coords = fea_members[0] if len(fea_members) > 0 else []
-        y_coords = fea_members[1] if len(fea_members) > 1 else []
-        z_coords = fea_members[2] if len(fea_members) > 2 else []
-
-        fig_members = go.Figure() # defining the figure outside the loop to add multiple traces for each member
+        # 1. Initialize the PyNite Renderer
+        rndr = Renderer(model)
+        rndr.annotation_size = 0.2
+        rndr.deformed_shape = True
+        rndr.deformed_scale = 200
+        rndr.render_nodes = True
+        rndr.render_loads = True
+        rndr.labels = False
+        
+        # 2. Setup the plotter but DO NOT call rndr.render_model()
+        # render_model() hardcodes plotter.show(), which we want to avoid.
+        # Instead, we just call update() to build the geometry.
+        rndr.update(reset_camera=True)
+        
+        # 3. Export the PyVista plotter scene to an HTML file
+        html_file = "pynite_render.html"
+        rndr.plotter.export_html(html_file)
+        
+        # 4. Read the HTML file and display it in Streamlit
+        with open(html_file, 'r') as f:
+            html_data = f.read()
             
-        # Loop through members and insert 'None' to break the continuous line
-        for i in range(len(x_coords)):
-            x_cords = x_coords[i]
-            y_cords = y_coords[i]
-            z_cords = z_coords[i]
-            
-            # Create the line plot
-            fig_members.add_trace(go.Scatter3d(
-                x=x_cords, 
-                y=y_cords, 
-                z=z_cords,
-                mode='lines',
-                line=dict(color='blue', width=3),
-                name="Structural Members"
-            ))
-
-            print(f"Member {i+1}: X={x_cords}, Y={y_cords}, Z={z_cords}")
-
-        fig_members.update_layout(
-            scene=dict(
-                aspectmode='data',
-                xaxis=dict(title="X (Width)"),
-                yaxis=dict(title="Y (Depth)"),
-                zaxis=dict(title="Z (Height)"),
-                camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
-            ),
-            margin=dict(l=0, r=0, b=0, t=0),
-            height=700,
-        )
-        st.plotly_chart(fig_members, use_container_width=True)
+        components.html(html_data, height=800, width=1000)
 
 
 

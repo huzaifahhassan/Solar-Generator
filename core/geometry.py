@@ -183,7 +183,10 @@ class GeometryEngine:
         purlin_off = params['purlin_offset']
         rafter_purlin_off = params['rafter_purlin_offset']
         hor_panel_overhang = params['hor_panel_overhang']
-        hor_purlin_overhang = params['hor_purlin_overhang']
+        #hor_purlin_overhang = params['hor_purlin_overhang']
+        # overriding value
+        hor_purlin_overhang = hor_panel_overhang + 0.4
+
         
         # Spacing
         h_gap = params['h_gap']
@@ -704,7 +707,7 @@ class GeometryEngine:
                     y_coord_pair.append([sorted_one_rafter_nodes[q][1], sorted_one_rafter_nodes[q][1]])
                     z_coord_pair.append([sorted_one_rafter_nodes[q][2], 0])
 
-                if sorted_one_rafter_names[q+1][:2] == "NC" and q == 4: # This means we are at the last node which is also a column top node
+                if sorted_one_rafter_names[q+1][:2] == "NC" and q == len(sorted_one_rafter_names)-2: # This means we are at the last node which is also a column top node
                     print("Bottom Node to be added for:", sorted_one_rafter_names[q+1])
                     # creating bottom node to add it
                     x = sorted_one_rafter_nodes[q+1][0]
@@ -909,9 +912,21 @@ class GeometryEngine:
                     )
 
         ### Solving the model
-        #model.analyze_linear(log=True, check_stability=True, check_statics=True)
+        model.analyze_linear(log=True, check_stability=True, check_statics=True)
+
+        # from Pynite.Rendering import Renderer
+
+        # rndr = Renderer(model)
+        # rndr.annotation_size = 0.2
+        # rndr.deformed_shape = True
+        # rndr.deformed_scale = 200
+        # rndr.render_nodes = False
+        # rndr.render_loads = False
+        # rndr.labels = False
+        # rndr.render_model()
+
 
         # Plotting all the members in 3D using Plotly
         fea_members = [x_coord_pair, y_coord_pair, z_coord_pair]
 
-        return meshes, all_fea_nodes, fea_members
+        return meshes, all_fea_nodes, fea_members, model
