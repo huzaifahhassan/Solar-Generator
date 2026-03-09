@@ -5,6 +5,8 @@ import streamlit as st
 import numpy as np
 from Pynite import FEModel3D
 import pandas as pd
+import matplotlib
+matplotlib.use('TkAgg') # Or 'QtAgg', 'WxAgg', etc.
 
 
 class GeometryEngine:
@@ -195,17 +197,20 @@ class GeometryEngine:
         # Structure Sizes
         col_h_min = params['col_min_height']
 
-        col_len = params['col_len']
-        col_wid = params['col_wid']
-        col_thk = params['col_thk']
+        col_len = params['col_len']/1000
+        col_wid = params['col_wid']/1000
+        col_thk = params['col_thk']/1000
+        col_mesh = params['col_mesh']/1000
 
-        raf_len = params['raf_len']
-        raf_wid = params['raf_wid']
-        raf_thk = params['raf_thk']
+        raf_len = params['raf_len']/1000
+        raf_wid = params['raf_wid']/1000
+        raf_thk = params['raf_thk']/1000
+        raf_mesh = params['raf_mesh']/1000
 
-        pur_len = params['pur_len']
-        pur_wid = params['pur_wid']
-        pur_thk = params['pur_thk']
+        pur_len = params['pur_len']/1000
+        pur_wid = params['pur_wid']/1000
+        pur_thk = params['pur_thk']/1000
+        pur_mesh = params['pur_mesh']/1000
 
         # Block Dimensions
         blk_len = params['blk_len']
@@ -240,6 +245,80 @@ class GeometryEngine:
         C_PURLIN = "#379c09" 
         C_RAFTER = "#2292DD"
         C_BLOCK =  "#00AB8F"
+
+        ########################################## Getting Section Properties using Meshing ###############################
+
+        import sectionproperties.pre.library.steel_sections as steel_geom
+        from sectionproperties.analysis.section import Section
+
+        ## COLUMN PROPERTIES
+        column_channel = steel_geom.channel_section(
+            d=col_len,
+            b=col_wid,
+            t_f=col_thk,
+            t_w=col_thk,
+            r=0,
+            n_r=0
+        )
+
+        column_channel.create_mesh(mesh_sizes=col_mesh)
+        col_section = Section(geometry=column_channel)
+        col_section.plot_mesh(materials=False)
+
+        col_section.calculate_geometric_properties()
+        col_section.plot_centroids()
+        col_section.display_results(fmt=".1f")
+
+        # Note that the sign convention must match Pynite's convention:
+        # Iz = strong axis, Iy = weak axis, Ix = torsional
+        col_Iz, col_Iy, col_Ix = col_section.get_ic()
+        col_A = col_section.get_area()
+
+
+        ## RAFTER PROPERTIES
+
+        rafter_channel = steel_geom.channel_section(
+            d=raf_len,
+            b=raf_wid,
+            t_f=raf_thk,
+            t_w=raf_thk,
+            r=0,
+            n_r=0
+        )
+
+        rafter_channel.create_mesh(mesh_sizes=raf_mesh)
+        raf_section = Section(geometry=rafter_channel)
+        raf_section.plot_mesh(materials=False)          
+
+        raf_section.calculate_geometric_properties()
+        raf_section.plot_centroids()
+        raf_section.display_results(fmt=".1f")
+
+        raf_Iz, raf_Iy, raf_Ix = raf_section.get_ic()
+        raf_A = raf_section.get_area()
+
+        ## PURLIN PROPERTIES
+
+        purlin_channel = steel_geom.channel_section(
+            d=pur_len,
+            b=pur_wid,
+            t_f=pur_thk,
+            t_w=pur_thk,
+            r=0,
+            n_r=0
+        )
+
+        purlin_channel.create_mesh(mesh_sizes=pur_mesh)
+        pur_section = Section(geometry=purlin_channel)
+        pur_section.plot_mesh(materials=False)
+
+        pur_section.calculate_geometric_properties()
+        pur_section.plot_centroids()
+        pur_section.display_results(fmt=".1f")
+
+        pur_Iz, pur_Iy, pur_Ix = pur_section.get_ic()
+        pur_A = pur_section.get_area()
+
 
         # --- 3. -------------------------GENERATE COLUMNS & BLOCKS (Using CadQuery) --------------------------------
         div_y = max(1, y_cols_count - 1)
@@ -545,7 +624,7 @@ class GeometryEngine:
         model.add_material(name=material, E=E, G=G, nu=nu, rho=rho)
 
         # ADDING PURLIN SECTION
-        model.add_section("purlin_sec", A=10.3, Iy=15.3, Iz=510, J=0.506)
+        model.add_section("purlin_sec", A=pur_A, Iy=pur_Iy, Iz=pur_Iz, J=0.05)
 
         # DEFINING PURLIN ANGLE ABOUT ITS AXIS
         purlin_angle = angle + 90
@@ -621,7 +700,20 @@ class GeometryEngine:
         model.add_material(name=material, E=E, G=G, nu=nu, rho=rho)
 
         # ADDING RAFTER SECTION
-        model.add_section("rafter_sec", A=10.3, Iy=15.3, Iz=510, J=0.506)
+        model.add_section("rafter_sec", A=raf_A, Iy=raf_Iy, Iz=raf_Iz, J=0.05)
+
+        # ADDING COLUMN MATERIAL
+        material = "column_mat"
+        E = 29_000  # ksi
+        nu = 0.3
+        G = E / (2 * (1 + nu)) # ksi
+        rho = 0.49 / (12**3)   # kci
+
+        model.add_material(name=material, E=E, G=G, nu=nu, rho=rho)
+
+        # ADDING COLUMN SECTION
+        model.add_section("column_sec", A=col_A, Iy=col_Iy, Iz= col_Iz, J=0.05)
+
 
         # DEFINING RAFTER ANGLE ABOUT ITS AXIS
         rafter_angle = 0
@@ -696,8 +788,8 @@ class GeometryEngine:
                         f"M_{sorted_one_rafter_names[q]}_{bottom_node_name}",
                         i_node=sorted_one_rafter_names[q],
                         j_node=bottom_node_name,
-                        material_name="rafter_mat", 
-                        section_name="rafter_sec", 
+                        material_name="column_mat", 
+                        section_name="column_sec", 
                         rotation= rafter_angle, 
                         tension_only=False,
                         comp_only=False
@@ -721,8 +813,8 @@ class GeometryEngine:
                         f"M_{sorted_one_rafter_names[q+1]}_{bottom_node_name}",
                         i_node=sorted_one_rafter_names[q+1],
                         j_node=bottom_node_name,
-                        material_name="rafter_mat", 
-                        section_name="rafter_sec", 
+                        material_name="column_mat", 
+                        section_name="column_sec", 
                         rotation= rafter_angle, 
                         tension_only=False,
                         comp_only=False
@@ -815,8 +907,6 @@ class GeometryEngine:
         one_panel_one_point_force = one_panel_force/4 # 4 points of contact with perlin
         panel_angle = purlin_angle # verify this
 
-        corner_node_load = one_panel_one_point_force
-        center_node_load = one_panel_one_point_force*2
 
         # in reality we need to interpolate if angle > 7.5 Degrees
         if angle >= 0 and angle < 7.5:
@@ -912,19 +1002,7 @@ class GeometryEngine:
                     )
 
         ### Solving the model
-        model.analyze_linear(log=True, check_stability=True, check_statics=True)
-
-        # from Pynite.Rendering import Renderer
-
-        # rndr = Renderer(model)
-        # rndr.annotation_size = 0.2
-        # rndr.deformed_shape = True
-        # rndr.deformed_scale = 200
-        # rndr.render_nodes = False
-        # rndr.render_loads = False
-        # rndr.labels = False
-        # rndr.render_model()
-
+        model.analyze(log=True, check_stability=True, check_statics=True)
 
         # Plotting all the members in 3D using Plotly
         fea_members = [x_coord_pair, y_coord_pair, z_coord_pair]

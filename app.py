@@ -44,7 +44,7 @@ def main():
             col_min_h = st.number_input("Min Height (m)", 0.5, 5.0, 2.0)
 
         # --- Section: Offsets & Gaps ---
-        with st.expander("Offsets & Spacing"):
+        with st.expander("Offsets & Spacing (m)"):
             h_gap = st.number_input("Panel H-Gap", 0.0, 0.1, 0.02)
             v_gap = st.number_input("Panel V-Gap", 0.0, 0.1, 0.02)
             st.markdown("---")
@@ -58,35 +58,39 @@ def main():
         # --- Section: Structure Details ---
         with st.expander("Solar Farm Details"):
             copies_in_x = st.number_input("Duplicates in X", 1, 10, 1)
-            x_gap = st.number_input("Gap in X" , 0.0, 50.0, 20.0)
+            x_gap = st.number_input("Gap in X (m)" , 0.0, 50.0, 20.0)
             copies_in_y = st.number_input("Duplicates in Y", 1, 10, 1)
-            y_gap = st.number_input("Gap in Y", 0.0, 50.0, 20.0)
+            y_gap = st.number_input("Gap in Y (m)", 0.0, 50.0, 20.0)
 
         with st.expander("RCC Block Details"):
             b_len, b_wid, b_high = st.columns(3)
-            blk_len = b_len.number_input("Block Length", 0.5, 5.0, 1.0)
-            blk_wid = b_wid.number_input("Block Width", 0.5, 5.0, 1.0)
-            blk_heigth = b_high.number_input("Block Height", 0.5, 5.0, 1.0)
+            blk_len = b_len.number_input("Block Length (m)", 0.5, 5.0, 1.0)
+            blk_wid = b_wid.number_input("Block Width (m)", 0.5, 5.0, 1.0)
+            blk_heigth = b_high.number_input("Block Height (m)", 0.5, 5.0, 1.0)
 
         with st.expander("Section Profiles"):
             
-            st.subheader("Column Cross Section (m)")
-            c_len, c_wid, c_thk = st.columns(3)
-            col_len = c_len.number_input("Column Length", 0.05, 0.5, 0.15)
-            col_wid = c_wid.number_input("Column Width", 0.05, 0.5, 0.15)
-            col_thk = c_thk.number_input("Column Thickness", 0.01, 0.5, 0.01)
+            st.subheader("Column Cross Section (mm)")
+            c_len, c_wid, c_thk, c_mesh = st.columns(4)
+            col_len = c_len.number_input("Column Length", 20, 250, 150)
+            col_wid = c_wid.number_input("Column Width", 5, 100, 40)
+            col_thk = c_thk.number_input("Column Thickness", 0.01, 8.0, 2.0)
+            col_mesh = c_mesh.number_input("Column Mesh Size", 0.005, 0.01, 0.008)
 
-            st.subheader("Rafter Cross Section (m)")
-            r_len, r_wid, r_thk = st.columns(3)
-            raf_len = r_len.number_input("Rafter Length", 0.05, 0.5, 0.15)
-            raf_wid = r_wid.number_input("Rafter Width", 0.05, 0.5, 0.15)
-            raf_thk = r_thk.number_input("Rafter Thickness", 0.01, 0.5, 0.01)
 
-            st.subheader("Purlin Cross Section (m)")
-            pr_len, pr_wid, pr_thk = st.columns(3)
-            pur_len = pr_len.number_input("Purlin Length", 0.05, 0.5, 0.15)
-            pur_wid = pr_wid.number_input("Purlin Width", 0.05, 0.5, 0.15)
-            pur_thk = pr_thk.number_input("Purlin Thickness", 0.01, 0.5, 0.01)
+            st.subheader("Rafter Cross Section (mm)")
+            r_len, r_wid, r_thk, r_mesh = st.columns(4)
+            raf_len = r_len.number_input("Rafter Length", 20, 250, 150)
+            raf_wid = r_wid.number_input("Rafter Width", 5, 100, 40)
+            raf_thk = r_thk.number_input("Rafter Thickness", 0.01, 8.0, 2.0)
+            raf_mesh = r_mesh.number_input("Rafter Mesh Size", 0.005, 0.01, 0.008)
+
+            st.subheader("Purlin Cross Section (mm)")
+            pr_len, pr_wid, pr_thk, p_mesh = st.columns(4)
+            pur_len = pr_len.number_input("Purlin Length", 20, 250, 150)
+            pur_wid = pr_wid.number_input("Purlin Width", 5, 100, 40)
+            pur_thk = pr_thk.number_input("Purlin Thickness", 0.01, 8.0, 2.0)
+            pur_mesh = p_mesh.number_input("Purlin Mesh Size", 0.005, 0.01, 0.008)
 
         ############################# WIND LOAD ##########################################
 
@@ -125,8 +129,6 @@ def main():
             st.write(f"**Velocity Pressure (qz):** {velocity_pressure:.2f} N/m²")
 
 
-
-
     # ==========================================
     # 2. LOGIC - PACK DATA & GENERATE
     # ==========================================
@@ -139,9 +141,9 @@ def main():
         'col_min_height': col_min_h, 
         'h_gap': h_gap, 'v_gap': v_gap,
         'front_offset': front_off, 'rear_offset': rear_off, 'purlin_offset': purlin_off, 'rafter_purlin_offset': rafter_purlin_off, 'hor_panel_overhang': hor_panel_off, #'hor_purlin_overhang': hor_purlin_off,
-        'col_len': col_len, 'col_wid': col_wid, 'col_thk': col_thk,
-        'raf_len': raf_len, 'raf_wid': raf_wid, 'raf_thk': raf_thk,
-        'pur_len': pur_len, 'pur_wid': pur_wid, 'pur_thk': pur_thk,
+        'col_len': col_len, 'col_wid': col_wid, 'col_thk': col_thk, "col_mesh": col_mesh,
+        'raf_len': raf_len, 'raf_wid': raf_wid, 'raf_thk': raf_thk, "raf_mesh": raf_mesh,
+        'pur_len': pur_len, 'pur_wid': pur_wid, 'pur_thk': pur_thk, "pur_mesh": pur_mesh,
         'copies_in_x': copies_in_x, 'copies_in_y': copies_in_y, 'x_gap': x_gap, 'y_gap': y_gap,
         'blk_len': blk_len, 'blk_wid': blk_wid, 'blk_heigth': blk_heigth,
         'velocity_pressure': velocity_pressure
@@ -276,6 +278,7 @@ def main():
         rndr.render_nodes = True
         rndr.render_loads = True
         rndr.labels = False
+        rndr.color_map = "dz"
         
         # 2. Setup the plotter but DO NOT call rndr.render_model()
         # render_model() hardcodes plotter.show(), which we want to avoid.
